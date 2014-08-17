@@ -1,20 +1,111 @@
 # Reproducible Research: Peer Assessment 1
-
+### Unzip data file
+```{r echo = TRUE}
+unzip("activity.zip")
+```
 
 ## Loading and preprocessing the data
-
-
+### Loading data frame from csv file
+```{r echo = TRUE}
+data <- read.csv("activity.csv")
+head(data)
+```
 
 ## What is mean total number of steps taken per day?
+### Calculating total count of steps per day
+```{r echo = TRUE}
+dataSumDaily <- aggregate(steps~date, data, sum)
+head(dataSumDaily)
+```
+### Plotting bar diagram of total count of steps per each day
+```{r echo = TRUE}
+barplot(dataSumDaily$steps, names.arg=dataSumDaily$date, ylim=c(0,max(dataSumDaily$steps)), ylab="Total steps per day", xlab="Date")
+```
 
-
+### Calculating mean and median for total count of steps per day
+```{r echo = TRUE}
+mean(dataSumDaily$steps)
+median(dataSumDaily$steps)
+```
 
 ## What is the average daily activity pattern?
+### Calculating mean number of steps per each interval
+```{r echo = TRUE}
+dataMeanInterval <- aggregate(steps~interval, data, mean)
+head(dataMeanInterval)
+```
+### Plotting bar diagram for mean count of steps per each interval during the day
+```{r echo = TRUE}
+barplot(dataMeanInterval$steps, names.arg=dataMeanInterval$interval, ylim=c(0,max(dataMeanInterval$steps)), ylab="Mean steps per interval", xlab="Date")
+```
 
+### Interval which has max mean value of steps
+```{r echo = TRUE}
+dataMeanInterval$interval[which.max(dataMeanInterval$steps)]
+```
 
 
 ## Imputing missing values
+Will use mean value per interval to replace missing value with it.
+### Count of missing values in data
+```{r echo=TRUE}
+naSteps <- is.na(data$steps)
+length(naSteps[naSteps==TRUE])
+```
+### Function to get a step value based on its step value and interval value
+```{r echo = TRUE}
+### Replace each missing value with the mean value of its 5-minute interval
+meanValue <- function(steps, interval) {
+  value <- NA  
+  if (!is.na(steps))
+        value <- c(steps)
+  else
+        value <- (dataMeanInterval[dataMeanInterval$interval==interval, "steps"])
+  value
+  return (value)
+}
+```
+### Replacing missing values with their mean values per their interval
+```{r echo = TRUE}
+dataWithoutNa <- data
+dataWithoutNa$steps <- mapply(meanValue, dataWithoutNa$steps, dataWithoutNa$interval)
+```
+### Plotting bar diagram for total steps per day without missing values, calculating mean and median
+```{r echo = TRUE}
+barplot(dataWithoutNa$steps, names.arg=dataWithoutNa$date, ylim=c(0,max(dataWithoutNa$steps)), ylab="Total steps per day", xlab="Date")
+mean(dataWithoutNa$steps)
+median(dataWithoutNa$steps)
+```
 
-
-
+### Result - values are bigger because missing values were treated as 0, but now they have possitive value.
 ## Are there differences in activity patterns between weekdays and weekends?
+### Function to decide weekday or weekend
+```{r echo=TRUE}
+weekdayOrWeekend <- function(date) {
+    day <- weekdays(date)
+    if (day %in% c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday"))
+        return("weekday")
+    else if (day %in% c("Saturday", "Sunday"))
+        return("weekend")
+    else
+        stop("incorrect state")
+}
+```
+### Converting date for date column from string to Date 
+```{r echo=TRUE}
+dataWithoutNa$date <- as.Date(dataWithoutNa$date)
+```
+### Calculating dayType field to determine weekday or weekend
+```{r echo=TRUE}
+#install.packages("ggplot2")
+library(ggplot2)
+dataWithoutNa$dayType <- sapply(dataWithoutNa$date, FUN=weekdayOrWeekend)
+```
+### Calculating average per interval 
+```{r echo=TRUE}
+averageDataWithoutNa <- aggregate(steps ~ interval + dayType, data=dataWithoutNa, mean)
+```
+### Ploting two diagrams one for weekdays and other for weekends average value of steps per interval
+```{r echo=TRUE}
+ggplot(averageDataWithoutNa, aes(interval, steps)) + geom_line() + facet_grid(dayType ~ .) + xlab("5-minute interval") + ylab("Number of steps")
+```
