@@ -1,0 +1,200 @@
+---
+title: "storm.analysis"
+author: "Iurii Dziuban"
+date: "August 24, 2014"
+output: html_document
+---
+Impact of weather events on health and economic in the USA.
+======================================================
+
+Storms and other severe weather events can cause both public health and economic
+problems for communities and municipalities. Many severe events can result in
+fatalities, injuries, and property damage, and preventing such outcomes to the extent
+possible is a key concern.
+
+In this project it is explored different characteristics and estimates of storm on storm database.
+
+Synopsis
+========
+
+Tornadoes are the most dangerous weather event to the population health. Next it is excessive heat. Flash floods and thunderstorm winds caused a lot of money due to damage.
+
+
+Data Processing
+===============
+
+Data is from https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2
+Documentation available here: https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf
+
+Reading data
+```{r cache=TRUE}
+storm <- read.csv(bzfile("data/repdata-data-StormData.csv.bz2"))
+```
+
+Cleaning and assigning event types
+```{r}
+# number of unique event types
+length(unique(storm$EVTYPE))
+# translate all letters to lowercase
+event_types <- tolower(storm$EVTYPE)
+# replace all punct. characters with a space
+event_types <- gsub("[[:blank:][:punct:]+]", " ", event_types)
+length(unique(event_types))
+# update the data frame
+storm$EVTYPE <- event_types
+```
+
+Further analysis done on this data
+
+Most dangerous Events to Health
+================================================
+
+To find the most harmful(fatal, injuries) event types, the number
+of casualties is aggregated by the event type.
+
+```{r}
+library(plyr)
+casualties <- ddply(storm, .(EVTYPE), summarize,
+                    fatalities = sum(FATALITIES),
+                    injuries = sum(INJURIES))
+
+# Find events that caused most death and injury
+fatal_events <- head(casualties[order(casualties$fatalities, decreasing = T), ], 10)
+injury_events <- head(casualties[order(casualties$injuries, decreasing = T), ], 10)
+```
+
+Events that caused most deaths:
+```{r}
+fatal_events[, c("EVTYPE", "fatalities")]
+```
+
+Events that caused most injuries
+```{r}
+injury_events[, c("EVTYPE", "injuries")]
+```
+
+Most economic difficult (property damage, crop damage) event types
+==================================
+
+To analyze the impact of weather events on the economy, available property
+damage and crop damage reportings/estimates were used.
+Transformation
+h -> hundred, k -> thousand, m -> million, b -> billion
+```{r}
+exp_transform <- function(e) {
+    if (e %in% c('h', 'H'))
+        return(2)
+    else if (e %in% c('k', 'K'))
+        return(3)
+    else if (e %in% c('m', 'M'))
+        return(6)
+    else if (e %in% c('b', 'B'))
+        return(9)
+    else if (!is.na(as.numeric(e))) # if a digit
+        return(as.numeric(e))
+    else if (e %in% c('', '-', '?', '+'))
+        return(0)
+    else {
+        stop("Invalid exponent value.")
+    }
+}
+```
+
+Damage is calculated
+```{r cache=TRUE}
+prop_dmg_exp <- sapply(storm$PROPDMGEXP, FUN=exp_transform)
+storm$prop_dmg <- storm$PROPDMG * (10 ** prop_dmg_exp)
+crop_dmg_exp <- sapply(storm$CROPDMGEXP, FUN=exp_transform)
+storm$crop_dmg <- storm$CROPDMG * (10 ** crop_dmg_exp)
+```
+
+Compute the economic loss by event type
+and filter out events that caused no economic loss
+```{r}
+library(plyr)
+econ_loss <- ddply(storm, .(EVTYPE), summarize,
+                   prop_dmg = sum(prop_dmg),
+                   crop_dmg = sum(crop_dmg))
+
+econ_loss <- econ_loss[(econ_loss$prop_dmg > 0 | econ_loss$crop_dmg > 0), ]
+prop_dmg_events <- head(econ_loss[order(econ_loss$prop_dmg, decreasing = T), ], 10)
+crop_dmg_events <- head(econ_loss[order(econ_loss$crop_dmg, decreasing = T), ], 10)
+```
+
+Events that caused most property damage
+```{r}
+prop_dmg_events[, c("EVTYPE", "prop_dmg")]
+```
+
+Events that caused most crop damage
+
+```{r}
+crop_dmg_events[, c("EVTYPE", "crop_dmg")]
+```
+
+Results
+=======
+
+Health impact of weather events
+-------------------------------
+
+The plot shows most dangerous weather event types. (injuries, fatalities)
+
+```{r}
+library(ggplot2)
+library(gridExtra)
+p1 <- ggplot(data=fatal_events,
+             aes(x=reorder(EVTYPE, fatalities), y=fatalities, fill=fatalities)) +
+    geom_bar(stat="identity") +
+    coord_flip() +
+    ylab("Number of fatalities") +
+    xlab("Weather event type") +
+    theme(legend.position="none")
+
+p2 <- ggplot(data=injury_events,
+             aes(x=reorder(EVTYPE, injuries), y=injuries, fill=injuries)) +
+    geom_bar(stat="identity") +
+    coord_flip() + 
+    ylab("Number of injuries") +
+    xlab("Weather event type") +
+    theme(legend.position="none")
+
+grid.arrange(p1, p2, main="The most dangerous weather events in the USA")
+```
+
+The most dangerous weather events in USA that cause death and injuries are tornadoes.
+They caused more than 5000 deaths and more than 10000 injuries for 60 years.
+The second and third place are excessive heat and flash floods....
+
+Economic impact of weather events
+---------------------------------
+
+The following plot shows the most economic difficult events (property damage, crop damage)
+
+
+```{r}
+library(ggplot2)
+library(gridExtra)
+# Set the levels in order
+p1 <- ggplot(data=prop_dmg_events,
+             aes(x=reorder(EVTYPE, prop_dmg), y=log10(prop_dmg), fill=prop_dmg )) +
+    geom_bar(stat="identity") +
+    coord_flip() +
+    xlab("Weather event type") +
+    ylab("Property damage, dollars (log-scale)") +
+    theme(legend.position="none")
+
+p2 <- ggplot(data=crop_dmg_events,
+             aes(x=reorder(EVTYPE, crop_dmg), y=crop_dmg, fill=crop_dmg)) +
+    geom_bar(stat="identity") +
+    coord_flip() + 
+    xlab("Weather event type") +
+    ylab("Crop damage, dollars") + 
+    theme(legend.position="none")
+
+grid.arrange(p1, p2, main="Weather costs to the USA economy")
+```
+
+
+Flash floods and thunderstorm winds cost the most
+property damages. Also floods and hails cost a lot of money.
